@@ -76,6 +76,9 @@ class ScanActivity : BaseActivity(), IScanView.Proxy {
         findViewById<View>(R.id.gallery).setOnClickListener {
             pickupFromGallery()
         }
+        findViewById<View>(R.id.close).setOnClickListener {
+            finish()
+        }
 
         if (initialBundle.containsKey(EdgeDetectionHandler.FROM_GALLERY) && initialBundle.getBoolean(EdgeDetectionHandler.FROM_GALLERY,false))
         {

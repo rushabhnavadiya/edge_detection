@@ -1,6 +1,7 @@
 package com.sample.edgedetection.crop
 
 import android.widget.ImageView
+import android.widget.RelativeLayout
 import com.sample.edgedetection.view.PaperRectangle
 
 
@@ -12,5 +13,6 @@ class ICropView {
         fun getPaper(): ImageView
         fun getPaperRect(): PaperRectangle
         fun getCroppedPaper(): ImageView
+        fun getProgressBar(): RelativeLayout
     }
 }

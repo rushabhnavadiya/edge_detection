@@ -7,10 +7,14 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
+import android.widget.RelativeLayout
+import android.widget.TextView
 import com.sample.edgedetection.EdgeDetectionHandler
 import com.sample.edgedetection.R
 import com.sample.edgedetection.base.BaseActivity
 import com.sample.edgedetection.view.PaperRectangle
+import java.util.Timer
+import kotlin.concurrent.schedule
 
 class CropActivity : BaseActivity(), ICropView.Proxy {
 
@@ -31,6 +35,10 @@ class CropActivity : BaseActivity(), ICropView.Proxy {
             // we have to initialize everything in post when the view has been drawn and we have the actual height and width of the whole view
             mPresenter.onViewsReady(findViewById<View>(R.id.paper).width, findViewById<View>(R.id.paper).height)
         }
+
+        findViewById<ImageView>(R.id.back).setOnClickListener {
+            onBackPressed()
+        }
     }
 
     override fun provideContentViewId(): Int = R.layout.activity_crop
@@ -39,18 +47,26 @@ class CropActivity : BaseActivity(), ICropView.Proxy {
     override fun initPresenter() {
         val initialBundle = intent.getBundleExtra(EdgeDetectionHandler.INITIAL_BUNDLE) as Bundle
         mPresenter = CropPresenter(this, initialBundle)
-        findViewById<ImageView>(R.id.crop).setOnClickListener {
+        findViewById<TextView>(R.id.crop).setOnClickListener {
             Log.e(TAG, "Crop touched!")
+            findViewById<RelativeLayout>(R.id.progress_bar).visibility = View.VISIBLE
             mPresenter.crop()
-            changeMenuVisibility(true)
+            Timer().schedule(500) {
+//                findViewById<RelativeLayout>(R.id.progress_bar).visibility = View.GONE
+
+                saveAndBack()
+            }
+//            changeMenuVisibility(true)
         }
+
     }
 
     override fun getPaper(): ImageView = findViewById(R.id.paper)
+    override fun getProgressBar(): RelativeLayout = findViewById(R.id.progress_bar)
 
-    override fun getPaperRect() = findViewById<PaperRectangle>(R.id.paper_rect)
+    override fun getPaperRect(): PaperRectangle = findViewById(R.id.paper_rect)
 
-    override fun getCroppedPaper() = findViewById<ImageView>(R.id.picture_cropped)
+    override fun getCroppedPaper(): ImageView = findViewById(R.id.picture_cropped)
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.crop_activity_menu, menu)
@@ -66,10 +82,10 @@ class CropActivity : BaseActivity(), ICropView.Proxy {
 
         if (showMenuItems) {
             menu.findItem(R.id.action_label).isVisible = true
-            findViewById<ImageView>(R.id.crop).visibility = View.GONE
+            findViewById<TextView>(R.id.crop).visibility = View.GONE
         } else {
             menu.findItem(R.id.action_label).isVisible = false
-            findViewById<ImageView>(R.id.crop).visibility = View.VISIBLE
+            findViewById<TextView>(R.id.crop).visibility = View.VISIBLE
         }
 
         return super.onCreateOptionsMenu(menu)
@@ -114,5 +130,14 @@ class CropActivity : BaseActivity(), ICropView.Proxy {
             }
             else -> return super.onOptionsItemSelected(item)
         }
+    }
+
+
+    private fun saveAndBack(){
+        Log.e(TAG, "Saved And Back!")
+        mPresenter.save()
+        setResult(Activity.RESULT_OK)
+        System.gc()
+        finish()
     }
 }
