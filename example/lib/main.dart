@@ -6,146 +6,216 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-void main() {
+
+import 'package:camera/camera.dart';
+
+import 'package:image_picker/image_picker.dart';
+
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(MyApp());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   @override
-  _MyAppState createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: CustomCameraScreen(),
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
+class CustomCameraScreen extends StatefulWidget {
+  @override
+  _CustomCameraScreenState createState() => _CustomCameraScreenState();
+}
+
+class _CustomCameraScreenState extends State<CustomCameraScreen> {
+  CameraController? _controller;
+  bool _isFlashOn = false;
   String? _imagePath;
 
   @override
   void initState() {
     super.initState();
+    _initializeCamera();
   }
 
-  Future<void> getImageFromCamera() async {
-    bool isCameraGranted = await Permission.camera.request().isGranted;
-    if (!isCameraGranted) {
-      isCameraGranted =
-          await Permission.camera.request() == PermissionStatus.granted;
-    }
+  // Initialize Camera
+  Future<void> _initializeCamera() async {
+    await Permission.camera.request(); // Request camera permission
 
-    if (!isCameraGranted) {
-      // Have not permission to camera
-      return;
-    }
+    final cameras = await availableCameras();
+    if (cameras.isEmpty) return;
 
-    // Generate filepath for saving
-    String imagePath = join((await getApplicationSupportDirectory()).path,
-        "${(DateTime.now().millisecondsSinceEpoch / 1000).round()}.jpeg");
+    _controller = CameraController(
+      cameras.first,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
+
+    await _controller!.initialize();
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  // Toggle Flashlight
+  Future<void> _toggleFlash() async {
+    if (_controller == null) return;
+    _isFlashOn = !_isFlashOn;
+    await _controller!.setFlashMode(_isFlashOn ? FlashMode.torch : FlashMode.off);
+    setState(() {});
+  }
+
+  // Capture Image and Apply Edge Detection
+  Future<void> _captureImage() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    final image = await _controller!.takePicture();
+    _applyEdgeDetection(image.path);
+  }
+
+  // Pick Image from Gallery
+  Future<void> _pickImageFromGallery() async {
+    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      _applyEdgeDetection(pickedFile.path);
+    }
+  }
+
+  // Apply Edge Detection to Image
+  Future<void> _applyEdgeDetection(String imagePath) async {
+    final appDir = await getApplicationSupportDirectory();
+    String outputPath = join(appDir.path, "${DateTime.now().millisecondsSinceEpoch}.jpeg");
 
     bool success = false;
-
     try {
-      //Make sure to await the call to detectEdge.
-      success = await EdgeDetection.detectEdge(
-        imagePath,
-        canUseGallery: true,
-        androidScanTitle: 'Scanning', // use custom localizations for android
-        androidCropTitle: 'Crop',
-        androidCropBlackWhiteTitle: 'Black White',
-        androidCropReset: 'Reset',
-      );
-      print("success: $success");
+      success = await EdgeDetection.detectEdge(outputPath);
     } catch (e) {
       print(e);
     }
 
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
     if (!mounted) return;
-
     setState(() {
-      if (success) {
-        _imagePath = imagePath;
-      }
+      _imagePath = success ? outputPath : imagePath;
     });
   }
 
-  Future<void> getImageFromGallery() async {
-    // Generate filepath for saving
-    String imagePath = join((await getApplicationSupportDirectory()).path,
-        "${(DateTime.now().millisecondsSinceEpoch / 1000).round()}.jpeg");
-
-    bool success = false;
-    try {
-      //Make sure to await the call to detectEdgeFromGallery.
-      success = await EdgeDetection.detectEdgeFromGallery(
-        imagePath,
-        androidCropTitle: 'Crop', // use custom localizations for android
-        androidCropBlackWhiteTitle: 'Black White',
-        androidCropReset: 'Reset',
-      );
-      print("success: $success");
-    } catch (e) {
-      print(e);
-    }
-
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
-    if (!mounted) return;
-
-    setState(() {
-      if (success) {
-        _imagePath = imagePath;
-      }
-    });
+  // Dispose Camera Controller
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('Plugin example app'),
-        ),
-        body: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Center(
-                child: ElevatedButton(
-                  onPressed: getImageFromCamera,
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Camera Preview
+          if (_controller != null && _controller!.value.isInitialized)
+            CameraPreview(_controller!)
+          else
+            Center(child: CircularProgressIndicator()),
+
+          // Cancel Button (Top Right)
+          Positioned(
+            top: 20,
+            right: 20,
+            child: IconButton(
+              icon: Icon(Icons.close, color: Colors.white, size: 40),
+              onPressed: () {
+                Navigator.pop(context); // Go back to previous screen
+              },
+            ),
+          ),
+
+          // Flashlight Button (Top Left)
+          Positioned(
+            top: 20,
+            left: 20,
+            child: IconButton(
+              icon: Icon(
+                _isFlashOn ? Icons.flash_on : Icons.flash_off,
+                color: Colors.white,
+                size: 40,
+              ),
+              onPressed: _toggleFlash,
+            ),
+          ),
+
+          // Gallery Button (Bottom Left)
+          Positioned(
+            bottom: 50,
+            left: 20,
+            child: IconButton(
+              icon: Icon(Icons.photo_library, color: Colors.white, size: 40),
+              onPressed: _pickImageFromGallery,
+            ),
+          ),
+
+          // Capture Button (Center Bottom)
+          Positioned(
+            bottom: 20,
+            left: MediaQuery.of(context).size.width / 2 - 30,
+            child: GestureDetector(
+              onTap: _captureImage,
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black, width: 4),
+                ),
+              ),
+            ),
+          ),
+
+          // Display Column with Buttons, Image Path, and Preview
+          Positioned(
+            bottom: 120,
+            left: 20,
+            right: 20,
+            child: Column(
+              children: [
+                ElevatedButton(
+                  onPressed: _captureImage,
                   child: Text('Scan'),
                 ),
-              ),
-              SizedBox(height: 20),
-              Center(
-                child: ElevatedButton(
-                  onPressed: getImageFromGallery,
+                SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _pickImageFromGallery,
                   child: Text('Upload'),
                 ),
-              ),
-              SizedBox(height: 20),
-              Text('Cropped image path:'),
-              Padding(
-                padding: const EdgeInsets.only(top: 0, left: 0, right: 0),
-                child: Text(
-                  _imagePath.toString(),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14),
-                ),
-              ),
-              Visibility(
-                visible: _imagePath != null,
-                child: Padding(
+                SizedBox(height: 20),
+
+                // Display Cropped Image Path
+                Text('Cropped Image Path:', style: TextStyle(fontSize: 16)),
+                Padding(
                   padding: const EdgeInsets.all(8.0),
-                  child: Image.file(
-                    File(_imagePath ?? ''),
+                  child: Text(
+                    _imagePath ?? "No Image Captured",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
                   ),
                 ),
-              ),
-            ],
+
+                // Display Image Preview
+                if (_imagePath != null)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Image.file(File(_imagePath!)),
+                  ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
